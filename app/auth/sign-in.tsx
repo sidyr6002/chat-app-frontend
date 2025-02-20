@@ -1,6 +1,15 @@
+import { useState } from 'react';
+import {
+    ActionFunction,
+    redirect,
+    useSubmit,
+} from 'react-router';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
+import axios from 'axios';
+import signInSchema from 'common/signin-schema';
+import { Loader2 } from 'lucide-react';
 
 import { Button } from '~/components/ui/button';
 import {
@@ -21,46 +30,92 @@ import {
 import { Input } from '~/components/ui/input';
 import { PasswordInput } from '~/components/password-input';
 import { cn } from '~/lib/utils';
+import { commitSession, getSession } from '~/session.server';
 
-const signInSchema = z.object({
-    email: z.string({ required_error: 'Email is required' }).email({
-        message: 'Please enter a valid email address',
-    }),
-    password: z
-        .string({ required_error: 'Password is required' })
-        .min(8, {
-            message: 'Password must be at least 8 characters',
-        })
-        .max(128, {
-            message: 'Password must be less than 128 characters',
-        })
-        .regex(
-            /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{6,}$/,
+export const action: ActionFunction = async ({ request }) => {
+    const formData = await request.formData();
+    const email = formData.get('email');
+    const password = formData.get('password');
+
+    const validation = signInSchema.safeParse({
+        email,
+        password,
+    });
+
+    if (!validation.success) {
+        return Response.json(
+            { errors: validation.error.format() },
+            { status: 400 }
+        );
+    }
+
+    try {
+        const backendUrl = process.env.BACKEND_URL || '';
+
+        const response = await axios.post(
+            `${backendUrl}/auth/signin`,
+            { email, password },
             {
-                message:
-                    'Password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character.',
+                headers: { 'Content-Type': 'application/json' },
+                withCredentials: true,
             }
-        ),
-});
+        );
+
+        const { accessToken } = response.data;
+        console.log("accessToken", accessToken);
+
+        console.log('Response headers:', response.headers)
+
+        // const refreshCookieHeader = response.headers['set-cookie'];
+
+        const session = await getSession(request.headers.get('Cookie'));
+        session.set('accessToken', accessToken);
+        const sessionCookie = await commitSession(session);
+
+        // const setCookieHeader = Array.isArray(refreshCookieHeader)
+        //     ? [...refreshCookieHeader, sessionCookie].join(', ')
+        //     : `${refreshCookieHeader}, ${sessionCookie}`;
+
+        return redirect("/", {
+            headers: {
+              "Set-Cookie": sessionCookie,
+            },
+        });
+    } catch (error) {
+        console.error('Sign-in error:', error);
+        return Response.json(
+            { error: "Invalid credentials or server error." },
+            { status: 401 }
+        );
+    }
+};
 
 const SignInPage = () => {
+    const submit = useSubmit();
+
     const form = useForm<z.infer<typeof signInSchema>>({
+        resolver: zodResolver(signInSchema),
         defaultValues: {
             email: '',
             password: '',
         },
-        resolver: zodResolver(signInSchema),
     });
 
-    function onSubmit(values: z.infer<typeof signInSchema>) {
-        console.log(values);
+    const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+    async function onSubmit(values: z.infer<typeof signInSchema>) {
+        setIsSubmitting(true);
+        await submit(values, { method: 'post' });        
+        setIsSubmitting(false);
     }
 
     return (
         <div className="w-full flex justify-center">
             <Card className="w-full sm:w-96">
                 <CardHeader className="text-center">
-                    <CardTitle className="text-2xl">Welcome back</CardTitle>
+                    <CardTitle className="text-3xl text-blue-600">
+                        Welcome back
+                    </CardTitle>
                     <CardDescription>
                         Enter your credentials to sign in
                     </CardDescription>
@@ -70,6 +125,7 @@ const SignInPage = () => {
                         <form
                             onSubmit={form.handleSubmit(onSubmit)}
                             className="space-y-4"
+                            method="post"
                         >
                             <FormField
                                 control={form.control}
@@ -86,11 +142,11 @@ const SignInPage = () => {
                                             <Input
                                                 id="email"
                                                 type="email"
-                                                placeholder="m@example.com"
+                                                placeholder="jhon@example.com"
                                                 className={cn(
                                                     'rounded-full shadow-inner shadow-zinc-700/15 focus-visible:ring-0',
                                                     fieldState.error &&
-                                                        'border-rose-600'
+                                                        'ring ring-rose-600'
                                                 )}
                                                 {...field}
                                                 aria-invalid={
@@ -132,9 +188,9 @@ const SignInPage = () => {
                                                 id="password"
                                                 placeholder="••••••••"
                                                 className={cn(
-                                                    'rounded-full shadow-inner shadow-zinc-700/15 focus-visible:ring-0 ',
+                                                    'rounded-full shadow-inner shadow-zinc-700/15 focus-visible:ring-0',
                                                     fieldState.error &&
-                                                        'border-rose-600'
+                                                        'ring ring-rose-600'
                                                 )}
                                                 {...field}
                                                 aria-invalid={
@@ -155,16 +211,30 @@ const SignInPage = () => {
                             <div className="space-y-2 pt-4">
                                 <Button
                                     type="submit"
-                                    className="w-full rounded-full hover:bg-opacity-70"
+                                    className="w-full rounded-full bg-blue-600 hover:bg-blue-700"
+                                    disabled={isSubmitting}
                                 >
-                                    Sign In
+                                    {isSubmitting ? (
+                                        <span>
+                                            <Loader2
+                                                className="mr-2 animate-spin"
+                                                style={{
+                                                    height: '16px',
+                                                    width: '16px',
+                                                }}
+                                            />
+                                            Signing In
+                                        </span>
+                                    ) : (
+                                        <span>Sign In</span>
+                                    )}
                                 </Button>
                                 <div className="flex justify-center text-sm">
                                     <p>
                                         Don&apos;t have an account?{' '}
                                         <a
                                             href="/sign-up"
-                                            className="text-neutral-600 hover:text-neutral-800 hover:underline hover:underline-offset-2"
+                                            className="text-blue-500 hover:text-blue-600 hover:underline hover:underline-offset-2"
                                         >
                                             Sign Up
                                         </a>
