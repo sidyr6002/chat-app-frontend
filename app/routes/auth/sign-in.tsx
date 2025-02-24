@@ -61,24 +61,16 @@ export const action: ActionFunction = async ({ request }) => {
             }
         );
 
-        const { accessToken } = response.data;
-        console.log("accessToken", accessToken);
+        const { accessToken, refreshToken } = response.data;
 
-        console.log('Response headers:', response.headers)
-
-        // const refreshCookieHeader = response.headers['set-cookie'];
-
-        const session = await getSession(request.headers.get('Cookie'));
+        const session = await getSession(request);
         session.set('accessToken', accessToken);
+        session.set('refreshToken', refreshToken);
         const sessionCookie = await commitSession(session);
-
-        // const setCookieHeader = Array.isArray(refreshCookieHeader)
-        //     ? [...refreshCookieHeader, sessionCookie].join(', ')
-        //     : `${refreshCookieHeader}, ${sessionCookie}`;
 
         return redirect("/", {
             headers: {
-              "Set-Cookie": sessionCookie,
+                'Set-Cookie': sessionCookie,
             },
         });
     } catch (error) {
