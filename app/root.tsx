@@ -6,6 +6,11 @@ import {
 	Scripts,
 	ScrollRestoration,
 } from "react-router";
+import { useState } from "react";
+import {
+	QueryClient,
+	QueryClientProvider,
+} from '@tanstack/react-query'
 
 import type { Route } from "./+types/root";
 import stylesheet from "./app.css?url";
@@ -43,8 +48,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+	const [queryClient] = useState(
+		() =>
+			new QueryClient({
+				defaultOptions: {
+					queries: {
+						// With SSR, we usually want to set some default staleTime
+						// above 0 to avoid refetching immediately on the client
+						staleTime: 60 * 1000,
+					},
+				},
+			}),
+	)
+
 	return (
-		<Outlet />
+		<QueryClientProvider client={queryClient}>
+			<Outlet />
+		</QueryClientProvider>
 	);
 }
 

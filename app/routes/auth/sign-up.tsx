@@ -24,8 +24,8 @@ import {
     FormMessage,
 } from '~/components/ui/form';
 import { Input } from '~/components/ui/input';
-import { PasswordInput } from '~/components/password-input';
-import { PasswordStrengthInput } from '~/components/password-strength-input';
+import { PasswordInput } from '~/components/inputs/password-input';
+import { PasswordStrengthInput } from '~/components/inputs/password-strength-input';
 import { cn } from '~/lib/utils';
 import useDebounce from '~/hooks/use-debounce';
 import BackendUrl from '~/types/backend-url';
