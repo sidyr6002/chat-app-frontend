@@ -1,4 +1,4 @@
-import { type RouteConfig, index, layout, route } from "@react-router/dev/routes";
+import { type RouteConfig, index, layout, prefix, route } from "@react-router/dev/routes";
 
 export default [
     index("routes/home.tsx"),
@@ -8,6 +8,17 @@ export default [
     ]),
     layout("routes/protected/layout.tsx", [
         route("chat", "routes/protected/chat.tsx"),
+    ]),
+    // Proxy Middleware Routes
+    ...prefix("api", [
+        ...prefix("conversations", [
+            index("routes/api/conversations/conversations.ts"),
+            route(":conversationId", "routes/api/conversations/$conversationId.ts"),
+        ]),
+        ...prefix("user", [
+            index("routes/api/user/user.ts"),
+        ])
     ])
+
 
 ] satisfies RouteConfig;

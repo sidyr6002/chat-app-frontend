@@ -48,6 +48,7 @@ const SignUpPage = () => {
         resolver: zodResolver(signUpSchema),
         defaultValues: {
             email: '',
+            username: '',
             password: '',
             confirmPassword: '',
         },

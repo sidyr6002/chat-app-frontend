@@ -63,14 +63,16 @@ export const action: ActionFunction = async ({ request }) => {
 
         const { accessToken, refreshToken } = response.data;
 
+        console.log('Access Token:', accessToken);
+        console.log('Refresh Token:', refreshToken);
+
         const session = await getSession(request);
         session.set('accessToken', accessToken);
         session.set('refreshToken', refreshToken);
-        const sessionCookie = await commitSession(session);
 
         return redirect("/", {
             headers: {
-                'Set-Cookie': sessionCookie,
+                'Set-Cookie': await commitSession(session),
             },
         });
     } catch (error) {

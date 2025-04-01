@@ -1,31 +1,46 @@
-import { LoaderFunction, Outlet, useLoaderData } from "react-router"
+import { LoaderFunction, Outlet, useLoaderData } from 'react-router';
+import { dehydrate, DehydratedState, HydrationBoundary, QueryClient } from '@tanstack/react-query';
 
-import { getSession } from "~/session.server";
-import User from "~/types/user";
-import authenticate from "~/utils/autheticate.server";
-import getUser from "~/utils/getUser";
+import ChatProviderMiddleware from '~/providers/chat-provider-middleware';
+import { getSession } from '~/session.server';
+import authenticate from '~/utils/authenticate.server';
+import { getUser, getUserConversations } from '~/utils/api.server';
 
+export const loader: LoaderFunction = async ({ request }) => {
+    const session = await getSession(request);
+    const accessToken = await authenticate(request, session);
 
-// TODO: Move getUser to api.server.ts
+    const queryClient = new QueryClient();
 
-// export const loader: LoaderFunction = async ({ request }) => {
-//     const session = await getSession(request);
-    
-//     const accessToken = await authenticate(request, session);
-//     // console.log('Access Token:', accessToken);
-//     const user = await getUser(accessToken);
+    await Promise.all([
+        queryClient.prefetchQuery({
+            queryKey: ['user'],
+            queryFn: () => getUser(accessToken),
+        }),
+        queryClient.prefetchQuery({
+            queryKey: ['conversations'],
+            queryFn: () => getUserConversations(accessToken),
+        })
+    ]);
 
-//     return Response.json({ user });
-// };
+    return Response.json({ dehydratedState: dehydrate(queryClient), accessToken });
+};
 
 const ProtectedLayout = () => {
-    //const { user } = useLoaderData<{ user: User }>();
+    const { dehydratedState, accessToken } = useLoaderData<{
+        dehydratedState: DehydratedState;
+        accessToken: string;
+    }>();
 
     return (
-        <div className="h-svh w-svm flex">
-            <Outlet />
-        </div>
-    )
-}
+        <HydrationBoundary state={dehydratedState}>
+            <ChatProviderMiddleware accessToken={accessToken}>
+                <div className="h-svh w-svm flex">
+                    <Outlet />
+                </div>
+            </ChatProviderMiddleware>
+        </HydrationBoundary>
+    );
+};
 
-export default ProtectedLayout
+export default ProtectedLayout;

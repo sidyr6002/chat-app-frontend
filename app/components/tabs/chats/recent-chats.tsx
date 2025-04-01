@@ -1,40 +1,70 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual'
 
 import RecentChatPill from './recent-chat-pill';
 
-import { useChat } from '~/contexts/chat-context';
+
 // import { getUserChats } from '~/utils/api.server';
-import Chat from '~/types/chat';
-import { getUserChats } from '~/utils/api';
+import Chat from '~/types/conversation';
+import { useMobileView } from '~/contexts/mobile-view';
+import { useActiveConversation } from '~/contexts/active-chat-context';
+
+const fetchConversations = async () => {
+    const response = await fetch('/api/conversations');
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch chats');
+    }
+
+    return response.json();
+};
 
 const RecentChats = () => {
-    const { data: chats = []} = useQuery<Chat[]>({
-        queryKey: ['chats'],
-        queryFn: getUserChats,
+    const { data: conversations = [], isLoading, isError} = useQuery<Chat[]>({
+        queryKey: ['conversations'],
+        queryFn: fetchConversations,
     })
     
-    const {setSelectedChat} = useChat();
+    const {setSelectedConversation} = useActiveConversation();
+    const { setIsMobileView } = useMobileView();
     const isInitialized = useRef(false);
 
     useEffect(() => {
-        if (!isInitialized.current && chats.length > 0) {
-            setSelectedChat(chats[0]);
+        if (!isInitialized.current && conversations.length > 0) {
+            setSelectedConversation(conversations[0]);
             isInitialized.current = true;
         }
-    }, [chats, setSelectedChat]);
+    }, [conversations, setSelectedConversation]);
 
-
-    console.log('Chats:', chats);
-
+    //console.log('Chats:', chats);
     const parentRef = useRef<HTMLDivElement | null>(null);
 
     const virtualizer = useVirtualizer ({
-        count: chats.length,
+        count: conversations.length,
         getScrollElement: () => parentRef.current,
         estimateSize: () => 80, 
     });
+
+    if (isLoading) {
+        return (
+            <div>Loading...</div>
+        )
+    }
+
+    if (isError) {
+        return (
+            <div>Error in loading chats</div>
+        )
+    }
+
+    const handleSelectChat = (chat: Chat) => {
+        setSelectedConversation(chat);
+
+        if (window.innerWidth < 1024) {
+            setIsMobileView(true);
+        }
+    }
 
     return (
         <div className="flex-grow flex flex-col">
@@ -52,9 +82,10 @@ const RecentChats = () => {
                     }}
                 >
                     {virtualizer.getVirtualItems().map((virtualItem) => {
-                        const chat = chats[virtualItem.index];
+                        const conversation = conversations[virtualItem.index];
                         return (<div
                             key={virtualItem.key}
+                            data-index={virtualItem.index}
                             style={{
                                 position: 'absolute',
                                 top: 0,
@@ -63,9 +94,10 @@ const RecentChats = () => {
                                 height: `${virtualItem.size}px`,
                                 transform: `translateY(${virtualItem.start}px)`,
                             }}
-                            className='flex items-center'
+                            className='flex items-center py-1'
+                            onClick={() => handleSelectChat(conversation)}
                         >
-                            <RecentChatPill chat={chat} />
+                            <RecentChatPill conversation={conversation} />
                         </div>
                         )
                     })}
@@ -76,4 +108,4 @@ const RecentChats = () => {
     );
 };
 
-export default RecentChats;
+export default memo(RecentChats);

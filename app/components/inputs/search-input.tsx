@@ -6,7 +6,7 @@ const SearchInput = () => {
   return (
     <div className="mt-4">
       <div className="relative">
-        <Input id="search" className="peer ps-9 pe-9 py-5 focus-visible:ring-0 bg-gray-400/40" placeholder="Search..." type="search" autoComplete="off" />
+        <Input id="search" className="peer ps-9 pe-9 py-5 focus-visible:ring-0 bg-gray-300" placeholder="Search..." type="search" autoComplete="off" />
         <div className="text-stone-900/50 pointer-events-none absolute inset-y-0 start-0 flex items-center justify-center ps-3 peer-disabled:opacity-50">
           <SearchIcon size={16} />
         </div>
