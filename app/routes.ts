@@ -13,7 +13,7 @@ export default [
     ...prefix("api", [
         ...prefix("conversations", [
             index("routes/api/conversations/conversations.ts"),
-            route(":conversationId", "routes/api/conversations/$conversationId.ts"),
+            route(":conversationId/messages", "routes/api/conversations/$conversationId/messages/messages.ts"),
         ]),
         ...prefix("user", [
             index("routes/api/user/user.ts"),

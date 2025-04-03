@@ -1,15 +1,33 @@
-import React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useEffect } from 'react';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import { Loader } from 'lucide-react';
 
 import ChatPill from './chat-pill';
 
-import Conversation from '~/types/conversation';
 import User from '~/types/user';
 import DirectMessage from '~/types/direct-message';
 
-const fetchConversationWithId = async (conversationId: string) => {
-    const response = await fetch(`/api/conversations/${conversationId}`);
+
+interface MessageResponse {
+    messages: DirectMessage[];
+    nextCursor: string | null;
+}
+
+const fetchMessagesForConversation = async ({
+    conversationId,
+    pageParam = undefined,
+}: {
+    conversationId: string;
+    pageParam?: string;
+}): Promise<MessageResponse> => {
+    const params = new URLSearchParams();
+    if (pageParam) params.append('cursor', pageParam);
+    params.append('take', '10');
+
+    const response = await fetch(
+        `/api/conversations/${conversationId}/messages?${params.toString()}`
+    );
     if (!response.ok) {
         throw new Error('Failed to fetch conversation');
     }
@@ -25,40 +43,89 @@ const ChatDisplay: React.FC<ChatDisplayProps> = ({
     conversationId,
     participant,
 }) => {
+    const scrollRef = React.useRef<HTMLDivElement>(null);
+
     const {
-        data: conversation,
+        status,
+        data,
         isLoading,
         isError,
-    } = useQuery<Conversation>({
+        fetchNextPage,
+        hasNextPage,
+        isFetchingNextPage,
+    } = useInfiniteQuery<MessageResponse>({
         queryKey: ['conversation', conversationId],
-        queryFn: () => fetchConversationWithId(conversationId),
+        queryFn: ({ pageParam }) =>
+            fetchMessagesForConversation({
+                conversationId,
+                pageParam: pageParam as string | undefined,
+            }),
+        initialPageParam: undefined,
+        getNextPageParam: (lastPage) => lastPage.nextCursor,
     });
 
-    const messages: DirectMessage[] = conversation?.messages || [];
+    const messages: DirectMessage[] = data
+        ? data.pages.flatMap((page) => page.messages)
+        : [];
 
     const virtualizer = useVirtualizer({
         count: messages.length,
         getScrollElement: () => scrollRef.current,
-        estimateSize: () => 120,
+        estimateSize: () => 500,
+        overscan: 5,
     });
 
-    const scrollRef = React.useRef<HTMLDivElement>(null);
     const virtualItems = virtualizer.getVirtualItems();
 
-    //console.log('Conversation:', messages);
+    useEffect(() => {
+        const scrollElement = scrollRef.current;
+        if (!scrollElement) return;
+
+        const handleScroll = () => {
+            const { scrollTop, clientHeight, scrollHeight } = scrollElement;
+            const threshold = 100; // pixels from the bottom to trigger the next fetch
+            if (scrollTop + clientHeight >= scrollHeight - threshold) {
+                if (hasNextPage && !isFetchingNextPage) {
+                    fetchNextPage();
+                }
+            }
+        };
+
+        scrollElement.addEventListener('scroll', handleScroll);
+        return () => {
+            scrollElement.removeEventListener('scroll', handleScroll);
+        };
+    }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+    useEffect(() => {
+        const scrollElement = scrollRef.current;
+        if (!scrollElement) return;
+      
+        const handleWheel = (e: WheelEvent) => {
+          e.preventDefault();
+          scrollElement.scrollBy(0, -e.deltaY);
+        };
+      
+        scrollElement.addEventListener('wheel', handleWheel, { passive: false });
+      
+        return () => {
+            scrollElement.removeEventListener('wheel', handleWheel);
+        };
+      }, [status]);
 
     if (isLoading) {
-        return <div>Loading...</div>;
+        return <div className="flex-grow">Loading...</div>;
     }
 
-    if (isError || !conversation) {
-        return <div>Error</div>;
+    if (isError || !messages) {
+        return <div className="flex-grow">Error</div>;
     }
 
     return (
         <div
             ref={scrollRef}
-            className="flex-grow overflow-y-auto contain-strict px-4 py-6"
+            className="flex-grow overflow-y-auto contain-strict px-4 py-4"
+            style={{ transform: 'scaleY(-1)' }}
         >
             <div
                 className="relative"
@@ -78,6 +145,9 @@ const ChatDisplay: React.FC<ChatDisplayProps> = ({
                                 key={key}
                                 data-index={index}
                                 ref={virtualizer.measureElement}
+                                style={{
+                                    transform: `scaleY(-1)`,
+                                }}
                             >
                                 <ChatPill
                                     message={message}
@@ -86,8 +156,13 @@ const ChatDisplay: React.FC<ChatDisplayProps> = ({
                             </div>
                         );
                     })}
+                {isFetchingNextPage && (<div className="absolute bottom-0 left-0 w-full flex items-center justify-center m-2 text-neutral-400">
+                    <Loader className="h-5 w-5 animate-spin" />
+                    <span className="sr-only">Loading more messages...</span>
+                </div>)}
                 </div>
             </div>
+            
         </div>
     );
 };

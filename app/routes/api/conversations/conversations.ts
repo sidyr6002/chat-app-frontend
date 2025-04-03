@@ -4,12 +4,6 @@ import { commitSession, getSession } from "~/session.server";
 import { getUserConversations } from "~/utils/api.server";
 import authenticate from "~/utils/authenticate.server";
 
-const BACKEND_URL = process.env.BACKEND_URL;
-
-if (!BACKEND_URL) {
-    throw new Error('BACKEND_URL is not defined');
-}
-
 export const loader: LoaderFunction = async ({ request }) => {
     console.log('(/api/chats)Fetching user conversations...');
     const session = await getSession(request);
