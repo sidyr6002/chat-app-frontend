@@ -1,31 +1,33 @@
 import { create } from 'zustand';
 
-import { ConversationStore, createConversationStore } from '../conversation-store';
+import { ConversationStore, createConversationStore } from '../conversation-store'
+
+const conversationStores = new Map<string, ConversationStore>();
 
 interface ConversationManagerState {
-  conversationStores: Map<string, ConversationStore>;
-  getOrCreateStore: (conversationId: string) => ConversationStore;
+  getStore: (conversationId: string) => ConversationStore['store'];
+  getHook: (conversationId: string) => ConversationStore['useConversation'];
   removeStore: (conversationId: string) => void;
 }
 
-export const useConversationManager = create<ConversationManagerState>((set, get) => ({
-    conversationStores: new Map(),
-    
-    getOrCreateStore: (conversationId) => {
-      const { conversationStores } = get();
-      
+export const useConversationManager = create<ConversationManagerState>(() => ({
+    getStore: (conversationId) => {
       if (!conversationStores.has(conversationId)) {
         const newStore = createConversationStore();
         conversationStores.set(conversationId, newStore);
-        set({ conversationStores: new Map(conversationStores) });
       }
-      
-      return conversationStores.get(conversationId)!;
+      return conversationStores.get(conversationId)!.store;
+    },
+
+    getHook: (conversationId) => {
+      if (!conversationStores.has(conversationId)) {
+        const newStore = createConversationStore();
+        conversationStores.set(conversationId, newStore);
+      }
+      return conversationStores.get(conversationId)!.useConversation;
     },
     
     removeStore: (conversationId) => {
-      const { conversationStores } = get();
       conversationStores.delete(conversationId);
-      set({ conversationStores: new Map(conversationStores) });
     }
   }));

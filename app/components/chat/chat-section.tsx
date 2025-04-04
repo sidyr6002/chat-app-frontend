@@ -10,6 +10,7 @@ import { cn } from '~/lib/utils';
 import { useActiveConversation } from '~/contexts/active-chat-context';
 import { useSocketContext } from '~/contexts/socket-context';
 import DirectMessage, { DirectMessageResponse } from '~/types/direct-message';
+import { useConversationManager } from '~/stores/managers/conversation-store-manager';
 
 
 const ChatSection = () => {
@@ -17,10 +18,13 @@ const ChatSection = () => {
     const {socket, isConnected: socketConnected } = useSocketContext();
     const { isMobileView } = useMobileView();
     const { selectedConversation } = useActiveConversation();
+
+    const { getStore, removeStore } = useConversationManager();
+
     const [message, setMessage] = useState('');
 
     useEffect(() => {
-        if (!socket) return;
+        if (!socket || !selectedConversation) return;
 
         const handleConnect = () => {
             console.log('Socket connected', socket.id);
@@ -29,7 +33,6 @@ const ChatSection = () => {
         const handleMessage = (newMessage: DirectMessage) => {
             console.log('Received message:', newMessage);
 
-            if (!selectedConversation) return;
             if (newMessage.conversationId !== selectedConversation.id) return;
 
             queryClient.setQueryData<InfiniteData<DirectMessageResponse>>(
@@ -62,6 +65,13 @@ const ChatSection = () => {
                     return { ...oldData, pages: newPages };
                 }
             )
+
+            const conversationStore = getStore(selectedConversation.id);
+            const currentState = conversationStore.getState();
+
+            if (!currentState.isAutoScroll) {
+                currentState.actions.incrementNewMessageCount();
+            } 
         };
 
         socket.on('connect', handleConnect);
@@ -70,8 +80,9 @@ const ChatSection = () => {
         return () => {
             socket.off('connect', handleConnect);
             socket.off('message', handleMessage);
+            removeStore(selectedConversation.id);
         };
-    }, [socket, selectedConversation, queryClient]);
+    }, [socket, selectedConversation, queryClient, getStore, removeStore]);
 
     useEffect(() => {
         if (!socket || !selectedConversation) return;

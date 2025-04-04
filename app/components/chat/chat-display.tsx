@@ -62,19 +62,16 @@ const ChatDisplay: React.FC<ChatDisplayProps> = ({
     const messages: DirectMessage[] = data
         ? data.pages.flatMap((page) => page.messages)
         : [];
-    
-    const { getOrCreateStore } = useConversationManager()
-    const { useConversation } = getOrCreateStore(conversationId);
 
-    const isAutoScroll = useConversation((state) => state.isAutoScroll);
-    const newMessageCount = useConversation((state) => state.newMessageCount);
+    const { getHook, removeStore } = useConversationManager();
 
-    const setIsAutoScroll = useConversation((state) => state.setIsAutoScroll);
-    const resetNewMessageCount = useConversation((state) => state.resetNewMessageCount)
-    
-    // const [autoScroll, setAutoScroll] = useState(true);
-    // const [newMessagesCount, setNewMessagesCount] = useState(0);
-    
+    const { useNewMessageCount, useIsAutoScroll, useActions } =
+        getHook(conversationId);
+
+    const isAutoScroll = useIsAutoScroll();
+    const newMessageCount = useNewMessageCount();
+    const { resetNewMessageCount, setIsAutoScroll } = useActions();
+
     const virtualizer = useVirtualizer({
         count: messages.length,
         getScrollElement: () => scrollRef.current,
@@ -88,17 +85,17 @@ const ChatDisplay: React.FC<ChatDisplayProps> = ({
     const checkScrollPosition = useCallback(() => {
         const scrollElement = scrollRef.current;
         if (!scrollElement) return;
-    
-        // Since the container is inverted with scaleY(-1), 
+
+        // Since the container is inverted with scaleY(-1),
         // "top" of content is actually at scrollHeight
         // and "bottom" is at 0
         const { scrollTop } = scrollElement;
         const threshold = 100;
-        
+
         // Near "top" (original bottom) means scrollTop is small
         const isNearTop = scrollTop <= threshold;
         setIsAutoScroll(isNearTop);
-        
+
         // Reset new messages count if user scrolls to top manually
         if (isNearTop && newMessageCount > 0) {
             resetNewMessageCount();
@@ -132,33 +129,41 @@ const ChatDisplay: React.FC<ChatDisplayProps> = ({
     useEffect(() => {
         const scrollElement = scrollRef.current;
         if (!scrollElement) return;
-        
-            if (isAutoScroll) {
-                // Auto-scroll to "top" (which is bottom in inverted view)
-                scrollElement.scrollTo({
-                    top: 0,
-                    behavior: 'smooth',
-                });
 
+        if (isAutoScroll) {
+            // Auto-scroll to "top" (which is bottom in inverted view)
+            scrollElement.scrollTo({
+                top: 0,
+                behavior: 'smooth',
+            });
         }
     }, [isAutoScroll]);
-  
+
     // Reverse the mouse wheel scrolling so that it scrolls up instead of down
     useEffect(() => {
         const scrollElement = scrollRef.current;
         if (!scrollElement) return;
-      
+
         const handleWheel = (e: WheelEvent) => {
-          e.preventDefault();
-          scrollElement.scrollBy(0, -e.deltaY);
+            e.preventDefault();
+            scrollElement.scrollBy(0, -e.deltaY);
         };
-      
-        scrollElement.addEventListener('wheel', handleWheel, { passive: false });
-      
+
+        scrollElement.addEventListener('wheel', handleWheel, {
+            passive: false,
+        });
+
         return () => {
             scrollElement.removeEventListener('wheel', handleWheel);
         };
-      }, [status]);
+    }, [status]);
+
+    //Clean up the store after unmount
+    useEffect(() => {
+        return () => {
+            removeStore(conversationId);
+        };
+    }, [removeStore, conversationId]);
 
     if (isLoading) {
         return <div className="flex-grow">Loading...</div>;
@@ -169,10 +174,10 @@ const ChatDisplay: React.FC<ChatDisplayProps> = ({
     }
 
     return (
-        <div className="relative flex-grow">
+        <div className="relative flex-grow py-2">
             <div
                 ref={scrollRef}
-                className="h-full overflow-y-auto contain-strict px-4 py-4"
+                className="h-full overflow-y-auto contain-strict px-4"
                 onScroll={checkScrollPosition}
                 style={{ transform: 'scaleY(-1)' }}
             >
@@ -205,14 +210,25 @@ const ChatDisplay: React.FC<ChatDisplayProps> = ({
                                 </div>
                             );
                         })}
-                    {isFetchingNextPage && (<div className="absolute bottom-0 left-0 w-full flex items-center justify-center m-2 text-neutral-400">
-                        <Loader className="h-5 w-5 animate-spin" />
-                        <span className="sr-only">Loading more messages...</span>
-                    </div>)}
+                        {isFetchingNextPage && (
+                            <div className="absolute bottom-0 left-0 w-full flex items-center justify-center m-2 text-neutral-400">
+                                <Loader className="h-5 w-5 animate-spin" />
+                                <span className="sr-only">
+                                    Loading more messages...
+                                </span>
+                            </div>
+                        )}
                     </div>
                 </div>
-                
             </div>
+            {newMessageCount > 0 && (
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
+                    <button className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg transform transition-all duration-200 hover:scale-105">
+                        {newMessageCount} new message
+                        {newMessageCount > 1 ? 's' : ''}
+                    </button>
+                </div>
+            )}
         </div>
     );
 };
