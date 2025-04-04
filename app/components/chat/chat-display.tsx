@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Loader } from 'lucide-react';
@@ -6,13 +6,8 @@ import { Loader } from 'lucide-react';
 import ChatPill from './chat-pill';
 
 import User from '~/types/user';
-import DirectMessage from '~/types/direct-message';
-
-
-interface MessageResponse {
-    messages: DirectMessage[];
-    nextCursor: string | null;
-}
+import DirectMessage, { DirectMessageResponse } from '~/types/direct-message';
+import { useConversationManager } from '~/stores/managers/conversation-store-manager';
 
 const fetchMessagesForConversation = async ({
     conversationId,
@@ -20,7 +15,7 @@ const fetchMessagesForConversation = async ({
 }: {
     conversationId: string;
     pageParam?: string;
-}): Promise<MessageResponse> => {
+}): Promise<DirectMessageResponse> => {
     const params = new URLSearchParams();
     if (pageParam) params.append('cursor', pageParam);
     params.append('take', '10');
@@ -53,8 +48,8 @@ const ChatDisplay: React.FC<ChatDisplayProps> = ({
         fetchNextPage,
         hasNextPage,
         isFetchingNextPage,
-    } = useInfiniteQuery<MessageResponse>({
-        queryKey: ['conversation', conversationId],
+    } = useInfiniteQuery<DirectMessageResponse>({
+        queryKey: ['direct-messages', conversationId],
         queryFn: ({ pageParam }) =>
             fetchMessagesForConversation({
                 conversationId,
@@ -67,7 +62,19 @@ const ChatDisplay: React.FC<ChatDisplayProps> = ({
     const messages: DirectMessage[] = data
         ? data.pages.flatMap((page) => page.messages)
         : [];
+    
+    const { getOrCreateStore } = useConversationManager()
+    const { useConversation } = getOrCreateStore(conversationId);
 
+    const isAutoScroll = useConversation((state) => state.isAutoScroll);
+    const newMessageCount = useConversation((state) => state.newMessageCount);
+
+    const setIsAutoScroll = useConversation((state) => state.setIsAutoScroll);
+    const resetNewMessageCount = useConversation((state) => state.resetNewMessageCount)
+    
+    // const [autoScroll, setAutoScroll] = useState(true);
+    // const [newMessagesCount, setNewMessagesCount] = useState(0);
+    
     const virtualizer = useVirtualizer({
         count: messages.length,
         getScrollElement: () => scrollRef.current,
@@ -77,6 +84,30 @@ const ChatDisplay: React.FC<ChatDisplayProps> = ({
 
     const virtualItems = virtualizer.getVirtualItems();
 
+    // Track scroll position with debounce
+    const checkScrollPosition = useCallback(() => {
+        const scrollElement = scrollRef.current;
+        if (!scrollElement) return;
+    
+        // Since the container is inverted with scaleY(-1), 
+        // "top" of content is actually at scrollHeight
+        // and "bottom" is at 0
+        const { scrollTop } = scrollElement;
+        const threshold = 100;
+        
+        // Near "top" (original bottom) means scrollTop is small
+        const isNearTop = scrollTop <= threshold;
+        setIsAutoScroll(isNearTop);
+        
+        // Reset new messages count if user scrolls to top manually
+        if (isNearTop && newMessageCount > 0) {
+            resetNewMessageCount();
+        }
+    }, [setIsAutoScroll, newMessageCount, resetNewMessageCount]);
+
+    // const debouncedCheckScroll = useDebounce(checkScrollPosition, 100);
+
+    // Fetch more messages when user scrolls to the bottom
     useEffect(() => {
         const scrollElement = scrollRef.current;
         if (!scrollElement) return;
@@ -97,6 +128,22 @@ const ChatDisplay: React.FC<ChatDisplayProps> = ({
         };
     }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
+    // Handle new messages and scroll behavior
+    useEffect(() => {
+        const scrollElement = scrollRef.current;
+        if (!scrollElement) return;
+        
+            if (isAutoScroll) {
+                // Auto-scroll to "top" (which is bottom in inverted view)
+                scrollElement.scrollTo({
+                    top: 0,
+                    behavior: 'smooth',
+                });
+
+        }
+    }, [isAutoScroll]);
+  
+    // Reverse the mouse wheel scrolling so that it scrolls up instead of down
     useEffect(() => {
         const scrollElement = scrollRef.current;
         if (!scrollElement) return;
@@ -122,47 +169,50 @@ const ChatDisplay: React.FC<ChatDisplayProps> = ({
     }
 
     return (
-        <div
-            ref={scrollRef}
-            className="flex-grow overflow-y-auto contain-strict px-4 py-4"
-            style={{ transform: 'scaleY(-1)' }}
-        >
+        <div className="relative flex-grow">
             <div
-                className="relative"
-                style={{ height: `${virtualizer.getTotalSize()}px` }}
+                ref={scrollRef}
+                className="h-full overflow-y-auto contain-strict px-4 py-4"
+                onScroll={checkScrollPosition}
+                style={{ transform: 'scaleY(-1)' }}
             >
                 <div
-                    className="absolute top-0 left-0 w-full"
-                    style={{
-                        transform: `translateY(${virtualItems[0]?.start ?? 0}px)`,
-                    }}
+                    className="relative"
+                    style={{ height: `${virtualizer.getTotalSize()}px` }}
                 >
-                    {virtualItems.map(({ index, key }) => {
-                        const message = messages[index];
-                        return (
-                            <div
-                                className="my-2"
-                                key={key}
-                                data-index={index}
-                                ref={virtualizer.measureElement}
-                                style={{
-                                    transform: `scaleY(-1)`,
-                                }}
-                            >
-                                <ChatPill
-                                    message={message}
-                                    participant={participant}
-                                />
-                            </div>
-                        );
-                    })}
-                {isFetchingNextPage && (<div className="absolute bottom-0 left-0 w-full flex items-center justify-center m-2 text-neutral-400">
-                    <Loader className="h-5 w-5 animate-spin" />
-                    <span className="sr-only">Loading more messages...</span>
-                </div>)}
+                    <div
+                        className="absolute top-0 left-0 w-full"
+                        style={{
+                            transform: `translateY(${virtualItems[0]?.start ?? 0}px)`,
+                        }}
+                    >
+                        {virtualItems.map(({ index, key }) => {
+                            const message = messages[index];
+                            return (
+                                <div
+                                    className="my-2"
+                                    key={key}
+                                    data-index={index}
+                                    ref={virtualizer.measureElement}
+                                    style={{
+                                        transform: `scaleY(-1)`,
+                                    }}
+                                >
+                                    <ChatPill
+                                        message={message}
+                                        participant={participant}
+                                    />
+                                </div>
+                            );
+                        })}
+                    {isFetchingNextPage && (<div className="absolute bottom-0 left-0 w-full flex items-center justify-center m-2 text-neutral-400">
+                        <Loader className="h-5 w-5 animate-spin" />
+                        <span className="sr-only">Loading more messages...</span>
+                    </div>)}
+                    </div>
                 </div>
+                
             </div>
-            
         </div>
     );
 };

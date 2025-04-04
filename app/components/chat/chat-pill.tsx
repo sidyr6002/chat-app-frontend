@@ -44,7 +44,7 @@ const ChatPill: React.FC<ChatPillProps> = ({ message, participant }) => {
                 {/* Message bubble */}
                 <div
                     className={cn(
-                        'px-4 py-2 rounded-lg text-xs md:text-sm transition-all lg:hover:scale-105 cursor-pointer',
+                        'px-4 py-2 rounded-lg text-xs md:text-sm cursor-pointer',
                         message.receiverId === participant.id
                             ? 'bg-blue-700 text-white rounded-br-none'
                             : 'bg-white rounded-bl-none shadow'

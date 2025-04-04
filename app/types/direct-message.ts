@@ -10,4 +10,9 @@ interface DirectMessage {
     updatedAt: Date;
 }
 
+export interface DirectMessageResponse {
+    messages: DirectMessage[];
+    nextCursor: string | null;
+}
+
 export default DirectMessage

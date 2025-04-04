@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { InfiniteData, useQueryClient } from '@tanstack/react-query';
 
 import ChatSectionHeader from './chat-section-header';
 import ChatDisplay from './chat-display';
@@ -8,8 +9,11 @@ import { useMobileView } from '~/contexts/mobile-view';
 import { cn } from '~/lib/utils';
 import { useActiveConversation } from '~/contexts/active-chat-context';
 import { useSocketContext } from '~/contexts/socket-context';
+import DirectMessage, { DirectMessageResponse } from '~/types/direct-message';
+
 
 const ChatSection = () => {
+    const queryClient = useQueryClient();
     const {socket, isConnected: socketConnected } = useSocketContext();
     const { isMobileView } = useMobileView();
     const { selectedConversation } = useActiveConversation();
@@ -22,8 +26,42 @@ const ChatSection = () => {
             console.log('Socket connected', socket.id);
         };
 
-        const handleMessage = (data: string) => {
-            console.log('Received message:', data);
+        const handleMessage = (newMessage: DirectMessage) => {
+            console.log('Received message:', newMessage);
+
+            if (!selectedConversation) return;
+            if (newMessage.conversationId !== selectedConversation.id) return;
+
+            queryClient.setQueryData<InfiniteData<DirectMessageResponse>>(
+                ['direct-messages', selectedConversation.id],
+                (oldData) => {
+                    if (!oldData) {
+                        return {
+                            pages: [{ messages: [newMessage], nextCursor: null }],
+                            pageParams: [undefined],
+                        };
+                    }
+
+                    // Clone existing pages to avoid mutation
+                    const newPages = [...oldData.pages];
+                    
+                    // Add message to the first page (most recent messages)
+                    if (newPages[0].messages.length < 10) {
+                        newPages[0] = {
+                            ...newPages[0],
+                            messages: [newMessage, ...newPages[0].messages],
+                        };
+                    } else {
+                        // Create new page if first page is full
+                        newPages.unshift({
+                            messages: [newMessage],
+                            nextCursor: newPages[0].nextCursor,
+                        });
+                    }
+
+                    return { ...oldData, pages: newPages };
+                }
+            )
         };
 
         socket.on('connect', handleConnect);
@@ -33,7 +71,7 @@ const ChatSection = () => {
             socket.off('connect', handleConnect);
             socket.off('message', handleMessage);
         };
-    }, [socket]);
+    }, [socket, selectedConversation, queryClient]);
 
     useEffect(() => {
         if (!socket || !selectedConversation) return;
